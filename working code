@@ -1,0 +1,157 @@
+# ===============================
+# FULL VOICE ASSISTANT CODE
+# ===============================
+!pip install SpeechRecognition gTTS pydub gradio --quiet
+!apt-get install ffmpeg -y  # Only for Linux/Colab. Skip on Windows if ffmpeg is already installed
+
+import gradio as gr
+import speech_recognition as sr
+from gtts import gTTS
+from pydub import AudioSegment
+import datetime
+import os
+
+# ===========================
+# 50 Common Inputs Dataset
+# ===========================
+assistant_data = {
+    "hello": "Hello! I am your personal voice assistant.",
+    "hi": "Hello! I am your personal voice assistant.",
+    "hey": "Hello! I am your personal voice assistant.",
+    "how are you": "I am doing great, thank you for asking!",
+    "what time is it": "The current time is {}.",
+    "tell me the time": "The current time is {}.",
+    "deep learning": "Deep learning is a type of machine learning that uses neural networks.",
+    "what is ai": "AI stands for Artificial Intelligence, which enables machines to mimic human intelligence.",
+    "define machine learning": "Machine learning is a field of AI that enables systems to learn from data.",
+    "what is python": "Python is a popular programming language used for web development and data science.",
+    "headache": "Please take rest, drink water, and consult a doctor if needed.",
+    "sar dard": "Please take rest, drink water, and consult a doctor if needed.",
+    "tell me a joke": "Why did the computer go to the doctor? Because it caught a virus!",
+    "good morning": "Good morning! I hope you have a productive day.",
+    "good evening": "Good evening! How was your day?",
+    "good night": "Good night! Sleep well.",
+    "what is your name": "I am Hadiya, your personal voice assistant.",
+    "who are you": "I am your personal voice assistant, here to help you.",
+    "open browser": "I cannot open apps yet, but you can open your browser manually.",
+    "play music": "I cannot play music directly, but you can use a music app.",
+    "tell me news": "I am not connected to live news, but I can answer general questions.",
+    "what is weather": "I cannot fetch live weather, but you can check online for your city.",
+    "who is elon musk": "Elon Musk is the CEO of Tesla and SpaceX.",
+    "what is tesla": "Tesla is a company that makes electric vehicles and clean energy products.",
+    "who is bill gates": "Bill Gates is the co-founder of Microsoft and philanthropist.",
+    "who invented ai": "AI was developed by many scientists over decades; no single inventor.",
+    "what is chatgpt": "ChatGPT is a conversational AI model developed by OpenAI.",
+    "what is openai": "OpenAI is an AI research lab that created models like GPT.",
+    "how old are you": "I do not have an age; I am a virtual assistant.",
+    "can you help me": "Yes! I am here to help you with questions.",
+    "thank you": "You’re welcome!",
+    "thanks": "You’re welcome!",
+    "bye": "Goodbye! Have a nice day.",
+    "see you": "See you later!",
+    "what is covid": "COVID-19 is a disease caused by the coronavirus.",
+    "what is ml": "ML stands for Machine Learning, a field of AI.",
+    "define ai": "AI is the simulation of human intelligence in machines.",
+    "tell me a fact": "Did you know? The honeybee is the only insect that produces food eaten by humans.",
+    "how many countries are there": "There are 195 countries in the world.",
+    "what is the capital of france": "The capital of France is Paris.",
+    "what is the capital of pakistan": "The capital of Pakistan is Islamabad.",
+    "how far is moon": "The average distance to the Moon is about 384,400 km.",
+    "what is gravity": "Gravity is the force that attracts objects towards each other.",
+    "who is president of usa": "The current president of the USA is Joe Biden.",
+    "what is blockchain": "Blockchain is a decentralized ledger technology for secure transactions.",
+    "what is cryptocurrency": "Cryptocurrency is a digital currency using blockchain technology.",
+    "what is bitcoin": "Bitcoin is a type of cryptocurrency.",
+    "define internet": "The Internet is a global network connecting computers worldwide.",
+    "what is ai assistant": "An AI assistant is a software that can understand and respond to human queries.",
+    "how to learn python": "You can learn Python through tutorials, online courses, and practice projects."
+}
+
+# ===========================
+# ASSISTANT LOGIC
+# ===========================
+def brain(text):
+    text = text.lower().strip()
+    for key in assistant_data:
+        if key in text:
+            response = assistant_data[key]
+            if "{}" in response:
+                response = response.format(datetime.datetime.now().strftime("%I:%M %p"))
+            return response
+    return "Sorry, I did not understand your question."
+
+# ===========================
+# FUNCTION TO SAVE TTS AS WAV WITH GENDER OPTION
+# ===========================
+def save_tts_wav(text, gender="Female", filename="output.wav"):
+    tts = gTTS(text)
+    temp_mp3 = "temp.mp3"
+    tts.save(temp_mp3)
+    
+    sound = AudioSegment.from_mp3(temp_mp3)
+    
+    # Male voice: lower pitch
+    if gender.lower() == "male":
+        sound = sound._spawn(sound.raw_data, overrides={
+            "frame_rate": int(sound.frame_rate * 0.8)
+        }).set_frame_rate(sound.frame_rate)
+    
+    sound.export(filename, format="wav")
+    os.remove(temp_mp3)
+    return filename
+
+# ===========================
+# VOICE → TEXT → VOICE
+# ===========================
+def voice_to_voice(audio_path, gender):
+    r = sr.Recognizer()
+    sound = AudioSegment.from_file(audio_path)
+    sound.export("temp.wav", format="wav")
+    
+    with sr.AudioFile("temp.wav") as source:
+        audio = r.record(source)
+        try:
+            user_text = r.recognize_google(audio)
+        except:
+            user_text = "Could not recognize voice."
+    
+    reply = brain(user_text)
+    audio_file = save_tts_wav(reply, gender, "voice_reply.wav")
+    return user_text, reply, audio_file
+
+# ===========================
+# TEXT → VOICE
+# ===========================
+def text_to_voice(text, gender):
+    reply = brain(text)
+    audio_file = save_tts_wav(reply, gender, "text_reply.wav")
+    return reply, audio_file
+
+# ===========================
+# GRADIO INTERFACE
+# ===========================
+with gr.Blocks() as demo:
+    gr.Markdown("# 🎤 Hadiya's Personal Voice Assistant")
+    gr.Markdown("Interact with me by speaking or typing, and I will respond instantly in text and voice!")
+
+    with gr.Row():
+        with gr.Column():
+            gr.Markdown("## 🎙️ Voice Input")
+            audio_in = gr.Audio(type="filepath", label="Record or Upload Voice")
+            gender_voice1 = gr.Radio(choices=["Male", "Female"], label="Select Voice Gender", value="Female")
+            text_out = gr.Textbox(label="Recognized Text", interactive=False)
+            ans_text = gr.Textbox(label="Assistant Reply", interactive=False)
+            ans_voice = gr.Audio(autoplay=True)
+            btn1 = gr.Button("🎤 Ask by Voice")
+            btn1.click(voice_to_voice, inputs=[audio_in, gender_voice1], outputs=[text_out, ans_text, ans_voice])
+
+        with gr.Column():
+            gr.Markdown("## ⌨️ Text Input")
+            text_in = gr.Textbox(label="Type your Question")
+            gender_voice2 = gr.Radio(choices=["Male", "Female"], label="Select Voice Gender", value="Female")
+            ans_text2 = gr.Textbox(label="Assistant Reply", interactive=False)
+            ans_voice2 = gr.Audio(autoplay=True)
+            btn2 = gr.Button("⌨️ Ask by Text")
+            btn2.click(text_to_voice, inputs=[text_in, gender_voice2], outputs=[ans_text2, ans_voice2])
+
+demo.launch()
